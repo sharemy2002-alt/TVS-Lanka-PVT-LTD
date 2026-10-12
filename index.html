@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Product NPS Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,.10);
+  --blue: #2a78d6; --red: #e34948; --neutral: #898781; --hover: rgba(11,11,11,.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10);
+    --blue: #3987e5; --red: #e66767; --neutral: #c3c2b7; --hover: rgba(255,255,255,.06);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10);
+  --blue: #3987e5; --red: #e66767; --neutral: #c3c2b7; --hover: rgba(255,255,255,.06);
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 56px; }
+h1 { font-size: 20px; margin: 0; font-weight: 650; }
+h2 { font-size: 16px; margin: 0 0 6px; }
+h3 { font-size: 14px; margin: 0; font-weight: 650; }
+p { margin: 0; }
+button, select, input { font: inherit; color: inherit; }
+.top { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.sub { color: var(--ink2); font-size: 13px; }
+.userbox { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; color: var(--ink2); }
+.btn { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+.btn:hover { background: var(--hover); }
+.btn:focus-visible, .seg button:focus-visible, .link:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; min-width: 0; }
+.card-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+.link { background: none; border: 0; color: var(--ink2); cursor: pointer; text-decoration: underline; padding: 2px; font-size: 12px; }
+.login { max-width: 460px; margin: 40px auto; text-align: left; }
+.login p { color: var(--ink2); margin-bottom: 14px; }
+.msg { margin-top: 12px; color: var(--ink2); font-size: 13px; min-height: 18px; }
+#app.loading { opacity: .55; transition: opacity .15s; }
+
+/* filters */
+.filters { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end; margin-bottom: 16px; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink2); }
+.field select, .field input { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; min-width: 130px; color: var(--ink); }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg button { background: var(--surface); border: 0; padding: 6px 10px; cursor: pointer; color: var(--ink2); }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button[aria-pressed="true"] { background: var(--hover); color: var(--ink); font-weight: 650; }
+
+/* kpis */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 12px; margin-bottom: 16px; }
+.hero { grid-column: span 2; }
+@media (max-width: 560px) { .hero { grid-column: span 1; } }
+.k-label { color: var(--ink2); font-size: 12px; }
+.k-val { font-size: 30px; font-weight: 650; line-height: 1.15; margin-top: 2px; }
+.hero .k-val { font-size: 56px; line-height: 1.05; }
+.k-sub { color: var(--ink2); font-size: 12px; margin-top: 2px; }
+.split { display: flex; gap: 2px; height: 10px; margin: 12px 0 8px; }
+.split i { display: block; min-width: 0; border-radius: 3px; }
+.split .d { background: var(--red); } .split .n { background: var(--neutral); } .split .p { background: var(--blue); }
+.key { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink2); }
+.key span { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.dot.d { background: var(--red); } .dot.n { background: var(--neutral); } .dot.p { background: var(--blue); }
+
+/* grids */
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 16px; margin-bottom: 16px; }
+.full { margin-bottom: 16px; }
+.chartbox { position: relative; height: 260px; }
+.chartbox.short { height: 120px; margin-top: 8px; }
+.tblbox { overflow-x: auto; max-height: 340px; overflow-y: auto; }
+.empty { color: var(--ink2); padding: 24px 0; text-align: center; }
+.note { color: var(--ink2); font-size: 12px; margin-top: 8px; }
+
+/* group rows (diverging bars) */
+.grow { display: grid; grid-template-columns: minmax(110px, 1.1fr) 2fr 48px; gap: 10px; align-items: center; padding: 4px 0; }
+.gname { display: flex; flex-direction: column; min-width: 0; }
+.gn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gname small { color: var(--ink2); font-size: 11px; }
+.gbar { position: relative; height: 16px; }
+.gbar .zero { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--axis); }
+.gbar .fill { position: absolute; top: 3px; height: 10px; }
+.gbar .fill.pos { background: var(--blue); border-radius: 0 4px 4px 0; }
+.gbar .fill.neg { background: var(--red); border-radius: 4px 0 0 4px; }
+.gbar .fill.low { opacity: .45; }
+.gval { text-align: right; font-variant-numeric: tabular-nums; font-weight: 650; }
+
+/* themes */
+.trow { display: grid; grid-template-columns: minmax(120px, 1.2fr) 2fr 84px; gap: 10px; align-items: center; padding: 4px 0; }
+.tbar { position: relative; height: 10px; background: var(--grid); border-radius: 4px; overflow: hidden; }
+.tbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 0 4px 4px 0; }
+.tbar i.blue { background: var(--blue); } .tbar i.red { background: var(--red); } .tbar i.gray { background: var(--neutral); }
+.tn { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink2); font-size: 12px; }
+
+/* detractor feed + table */
+.feed { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 10px; }
+.fcard { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.fmeta { color: var(--ink2); font-size: 12px; margin-bottom: 4px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px 1px 6px; font-size: 12px; white-space: nowrap; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+th { color: var(--ink2); font-weight: 600; position: sticky; top: 0; background: var(--surface); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.cm div { color: var(--ink2); font-size: 12px; }
+.cm b { color: var(--ink); font-weight: 600; }
+.tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px; }
+.tools input { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; min-width: 220px; }
+details.dq { color: var(--ink2); font-size: 12px; margin-top: 8px; }
+details.dq summary { cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Product NPS Dashboard</h1>
+      <p class="sub">How likely customers are to recommend their vehicle · Product NPS Survey</p>
+    </div>
+    <div class="userbox" id="userbox" hidden>
+      <span id="who"></span>
+      <button class="btn" id="btnRefresh" type="button">Refresh</button>
+      <button class="btn" id="btnSignOut" type="button">Lock</button>
+    </div>
+  </header>
+
+  <section id="login" class="card login" hidden>
+    <h2>Enter your access code</h2>
+    <p>This dashboard is private. Type the access code you were given to view it.</p>
+    <form id="codeForm" style="display:flex;gap:8px;flex-wrap:wrap">
+      <input type="password" id="code" autocomplete="current-password" placeholder="Access code" aria-label="Access code" required
+             style="flex:1;min-width:180px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--ink)">
+      <button class="btn" id="btnCode" type="submit">View dashboard</button>
+    </form>
+    <p class="msg" id="loginMsg" role="status"></p>
+  </section>
+
+  <main id="app" hidden>
+    <!-- one filter row above everything it scopes -->
+    <section class="card filters" aria-label="Filters">
+      <div class="field">Period
+        <div class="seg" id="presets" role="group" aria-label="Period presets">
+          <button type="button" data-days="0" aria-pressed="true">All time</button>
+          <button type="button" data-days="7" aria-pressed="false">7 days</button>
+          <button type="button" data-days="30" aria-pressed="false">30 days</button>
+          <button type="button" data-days="90" aria-pressed="false">90 days</button>
+        </div>
+      </div>
+      <label class="field">From <input type="date" id="fFrom"></label>
+      <label class="field">To <input type="date" id="fTo"></label>
+      <label class="field">Brand <select id="fBrand"></select></label>
+      <label class="field">Model <select id="fModel"></select></label>
+      <label class="field">Area <select id="fArea"></select></label>
+      <label class="field">Executive <select id="fExec"></select></label>
+      <label class="field">Purchase <select id="fMode"></select></label>
+      <button class="btn" id="btnReset" type="button">Reset</button>
+    </section>
+
+    <!-- KPIs -->
+    <section class="kpis" aria-label="Headline numbers">
+      <div class="card hero">
+        <div class="k-label">Net Promoter Score</div>
+        <div class="k-val" id="kNps">—</div>
+        <div class="split" id="split" role="img" aria-label="Share of detractors, passives and promoters">
+          <i class="d"></i><i class="n"></i><i class="p"></i>
+        </div>
+        <div class="key">
+          <span><i class="dot d"></i><span id="kD">Detractors 0–6</span></span>
+          <span><i class="dot n"></i><span id="kN">Passives 7–8</span></span>
+          <span><i class="dot p"></i><span id="kP">Promoters 9–10</span></span>
+        </div>
+      </div>
+      <div class="card"><div class="k-label">Responses</div><div class="k-val" id="kResp">—</div><div class="k-sub" id="kRange"></div></div>
+      <div class="card"><div class="k-label">Average score</div><div class="k-val" id="kAvg">—</div><div class="k-sub">out of 10</div></div>
+      <div class="card"><div class="k-label">Would recommend (Yes)</div><div class="k-val" id="kYes">—</div><div class="k-sub">answered "Yes"</div></div>
+    </section>
+
+    <!-- trend -->
+    <section class="card full" id="card-trend">
+      <div class="card-h">
+        <h3>NPS over time</h3>
+        <div style="display:flex;gap:10px;align-items:center">
+          <div class="seg" id="gran" role="group" aria-label="Group by">
+            <button type="button" data-g="week" aria-pressed="true">Weekly</button>
+            <button type="button" data-g="month" aria-pressed="false">Monthly</button>
+          </div>
+          <button class="link" type="button" data-table="trend">Table view</button>
+        </div>
+      </div>
+      <div id="trend-chart">
+        <div class="chartbox"><canvas id="cTrend" role="img" aria-label="Line chart of NPS per period"></canvas></div>
+        <div class="chartbox short"><canvas id="cResp" role="img" aria-label="Bar chart of responses per period"></canvas></div>
+      </div>
+      <div class="tblbox" id="trend-table" hidden></div>
+      <p class="note">Hollow points have fewer than 5 responses, so treat them as noise. Bars show responses per period.</p>
+    </section>
+
+    <section class="grid2">
+      <div class="card" id="card-dist">
+        <div class="card-h"><h3>Score distribution</h3><button class="link" type="button" data-table="dist">Table view</button></div>
+        <div class="key" style="margin-bottom:8px">
+          <span><i class="dot d"></i>Detractors 0–6</span><span><i class="dot n"></i>Passives 7–8</span><span><i class="dot p"></i>Promoters 9–10</span>
+        </div>
+        <div id="dist-chart"><div class="chartbox"><canvas id="cDist" role="img" aria-label="Bar chart of how many customers gave each score from 0 to 10"></canvas></div></div>
+        <div class="tblbox" id="dist-table" hidden></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>NPS by model</h3></div>
+        <div id="gModel"></div>
+        <p class="note">Bars run from −100 (left) to +100 (right). Lighter bars have fewer than 10 responses.</p>
+      </div>
+    </section>
+
+    <section class="grid2">
+      <div class="card"><div class="card-h"><h3>NPS by brand</h3></div><div id="gBrand"></div></div>
+      <div class="card"><div class="card-h"><h3>NPS by purchase type &amp; use</h3></div><div id="gMode"></div><div id="gPurpose" style="margin-top:10px"></div></div>
+    </section>
+
+    <section class="grid2">
+      <div class="card"><div class="card-h"><h3>NPS by area</h3></div><div id="gArea"></div></div>
+      <div class="card"><div class="card-h"><h3>NPS by executive</h3></div><div id="gExec"></div></div>
+    </section>
+
+    <section class="grid2">
+      <div class="card">
+        <div class="card-h"><h3>What customers like</h3><span class="sub" id="likesN"></span></div>
+        <div id="themeLikes"></div>
+        <p class="note">Keyword themes found in "why recommend" comments from promoters and passives.</p>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>Pain points &amp; improvement requests</h3><span class="sub" id="painsN"></span></div>
+        <div id="themePains"></div>
+        <p class="note">Keyword themes in "areas to improve" and "why not recommend". A response can count in several themes.</p>
+      </div>
+    </section>
+
+    <section class="card full">
+      <div class="card-h"><h3>Detractors (score 0–6): what they said</h3><span class="sub" id="detN"></span></div>
+      <div class="feed" id="feed"></div>
+    </section>
+
+    <section class="card full">
+      <div class="card-h"><h3>All responses</h3><span class="sub" id="tblCount"></span></div>
+      <div class="tools">
+        <input type="search" id="fSearch" placeholder="Search comments, area, model, executive" aria-label="Search responses">
+        <button class="btn" id="btnCsv" type="button">Download CSV</button>
+      </div>
+      <div class="tblbox" style="max-height:520px">
+        <table>
+          <thead><tr><th>Date</th><th>Executive</th><th>Area</th><th>Model</th><th>Score</th><th>Comments</th></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <p style="margin-top:10px"><button class="btn" id="btnMore" type="button" hidden>Show more</button></p>
+      <details class="dq"><summary>Data notes</summary><p id="dq" style="margin-top:6px"></p></details>
+    </section>
+  </main>
+</div>
+
+<script>
+'use strict';
+/* ====== CONFIG: paste your Apps Script Web app URL here ====== */
+const API_URL = 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL';
+/* ================================================ */
+
+const TOKEN_KEY = 'nps_access_code';   // kept in sessionStorage only: cleared when the tab closes
+const MIN_N = 10;       // groups with fewer responses are drawn lighter
+const MIN_POINT_N = 5;  // trend points with fewer responses are hollow
+
+const $ = id => document.getElementById(id);
+const store = {
+  get(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} },
+  del(k) { try { sessionStorage.removeItem(k); } catch (e) {} }
+};
+/* Build DOM with textContent only: names and comments come from the sheet and are untrusted. */
+function h(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  if (props) for (const [k, v] of Object.entries(props)) {
+    if (v == null || v === false) continue;
+    if (k === 'class') e.className = v; else if (k === 'style') e.style.cssText = v; else e.setAttribute(k, v);
+  }
+  kids.flat().forEach(c => { if (c != null && c !== false) e.append(c); });
+  return e;
+}
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const palette = () => ({ blue: css('--blue'), red: css('--red'), neutral: css('--neutral'), grid: css('--grid'),
+  axis: css('--axis'), ink: css('--ink'), ink2: css('--ink2'), muted: css('--muted'), surface: css('--surface') });
+
+const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const fmtDate = d => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+const pct = (n, t) => t ? Math.round(n / t * 100) + '%' : '—';
+const fmtNps = v => v == null || isNaN(v) ? '—' : (Math.round(v) > 0 ? '+' : '') + Math.round(v);
+const CAT_LABEL = { P: 'Promoter', N: 'Passive', D: 'Detractor' };
+
+let ALL = [], VIEW = [], META = {}, gran = 'week', shown = 50;
+const F = { from: '', to: '', brand: '', model: '', area: '', exec: '', mode: '' };
+const charts = {}, TABLES = {}, tableOn = {};
+
+/* ---------- stats ---------- */
+function stats(rows) {
+  const n = rows.length; let p = 0, pa = 0, d = 0, sum = 0;
+  rows.forEach(r => { if (r.score >= 9) p++; else if (r.score >= 7) pa++; else d++; sum += r.score; });
+  return { n, p, pa, d, nps: n ? (p - d) / n * 100 : null, avg: n ? sum / n : null };
+}
+function groupMap(rows, keyFn) {
+  const m = new Map();
+  rows.forEach(r => { const k = keyFn(r); if (!m.has(k)) m.set(k, []); m.get(k).push(r); });
+  return m;
+}
+
+/* ---------- auth + loading ---------- */
+function showLogin(msg) {
+  $('app').hidden = true; $('userbox').hidden = true; $('login').hidden = false;
+  let m = msg || '';
+  if (/PASTE_YOUR/.test(API_URL)) m = 'Setup needed: put your Apps Script Web app URL at the top of this file.';
+  $('loginMsg').textContent = m;
+}
+async function load(code, quiet) {
+  const app = $('app');
+  if (!app.hidden) app.classList.add('loading'); else if (!quiet) $('loginMsg').textContent = 'Loading…';
+  try {
+    const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ code }) });
+    const data = await res.json();
+    if (data.error === 'bad_code') { store.del(TOKEN_KEY); return showLogin(quiet ? '' : "That access code isn't right. Check it and try again."); }
+    if (data.error === 'too_many_attempts') return showLogin('Too many wrong attempts. Please wait 10 minutes and try again.');
+    if (data.error) return showLogin('The data service had a problem. Please try again in a minute.');
+
+    store.set(TOKEN_KEY, code);
+    META = data.meta || {};
+    ALL = data.rows.map(prep);
+    $('login').hidden = true; $('userbox').hidden = false; app.hidden = false;
+    $('who').textContent = 'Private dashboard';
+    buildFilters(); render();
+  } catch (e) {
+    if (app.hidden) showLogin('Could not reach the data service. Check your connection and try again.');
+    else $('who').textContent = 'Refresh failed. Check your connection.';
+  } finally { app.classList.remove('loading'); }
+}
+function prep(r) {
+  r.d = new Date(r.ts); r.day = ymd(r.d);
+  r._q = [r.executive, r.area, r.model, r.brand, r.mode, r.purpose, r.likes, r.improve, r.whyNot].join(' ').toLowerCase();
+  return r;
+}
+
+/* ---------- filters ---------- */
+function fillSelect(id, values, label) {
+  const sel = $(id), cur = sel.value;
+  sel.replaceChildren(h('option', { value: '' }, label), ...values.map(v => h('option', { value: v }, v)));
+  if (values.includes(cur)) sel.value = cur;
+}
+const uniq = k => [...new Set(ALL.map(r => r[k]))].sort((a, b) => String(a).localeCompare(String(b)));
+function buildFilters() {
+  fillSelect('fBrand', uniq('brand'), 'All brands');
+  fillSelect('fModel', uniq('model'), 'All models');
+  fillSelect('fArea', uniq('area'), 'All areas');
+  fillSelect('fExec', uniq('executive'), 'All executives');
+  fillSelect('fMode', uniq('mode'), 'All');
+}
+function readFilters() {
+  F.from = $('fFrom').value; F.to = $('fTo').value; F.brand = $('fBrand').value; F.model = $('fModel').value;
+  F.area = $('fArea').value; F.exec = $('fExec').value; F.mode = $('fMode').value;
+}
+function setPreset(days) {
+  document.querySelectorAll('#presets button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.days === days)));
+  if (days === 0) { $('fFrom').value = ''; $('fTo').value = ''; }
+  else { const s = new Date(); s.setDate(s.getDate() - (days - 1)); $('fFrom').value = ymd(s); $('fTo').value = ''; }
+}
+function resetFilters() {
+  ['fBrand', 'fModel', 'fArea', 'fExec', 'fMode'].forEach(id => $(id).value = '');
+  setPreset(0); $('fSearch').value = ''; readFilters(); render();
+}
+
+/* ---------- render all ---------- */
+function render() {
+  VIEW = ALL.filter(r =>
+    (!F.from || r.day >= F.from) && (!F.to || r.day <= F.to) && (!F.brand || r.brand === F.brand) &&
+    (!F.model || r.model === F.model) && (!F.area || r.area === F.area) && (!F.exec || r.executive === F.exec) &&
+    (!F.mode || r.mode === F.mode));
+  renderKpis(); renderTrend(); renderDist();
+  renderGroup('gModel', 'model', 10); renderGroup('gBrand', 'brand', 6); renderGroup('gMode', 'mode', 4);
+  renderGroup('gPurpose', 'purpose', 5); renderGroup('gArea', 'area', 12); renderGroup('gExec', 'executive', 12);
+  renderThemes(); renderFeed(); renderTable(true); renderNotes();
+}
+
+function renderKpis() {
+  const s = stats(VIEW), n = s.n;
+  $('kNps').textContent = fmtNps(s.nps);
+  $('kResp').textContent = n.toLocaleString();
+  $('kAvg').textContent = n ? s.avg.toFixed(1) : '—';
+  const yes = VIEW.filter(r => r.recommend === 'Yes').length, ans = VIEW.filter(r => r.recommend).length;
+  $('kYes').textContent = pct(yes, ans);
+  $('kD').textContent = 'Detractors 0–6 · ' + s.d + ' (' + pct(s.d, n) + ')';
+  $('kN').textContent = 'Passives 7–8 · ' + s.pa + ' (' + pct(s.pa, n) + ')';
+  $('kP').textContent = 'Promoters 9–10 · ' + s.p + ' (' + pct(s.p, n) + ')';
+  const bars = $('split').children;
+  [s.d, s.pa, s.p].forEach((v, i) => { bars[i].style.flex = n ? v + ' 1 0' : '0 1 0'; bars[i].style.display = v ? '' : 'none'; });
+  if (n) { const ds = VIEW.map(r => r.d).sort((a, b) => a - b); $('kRange').textContent = fmtDate(ds[0]) + ' – ' + fmtDate(ds[ds.length - 1]); }
+  else $('kRange').textContent = 'No responses match these filters';
+}
+
+/* ---------- charts (Chart.js) ---------- */
+function mkChart(key, canvasId, cfg) {
+  killChart(key);
+  if (typeof Chart === 'undefined') return;
+  charts[key] = new Chart($(canvasId), cfg);
+}
+function killChart(key) { if (charts[key]) { charts[key].destroy(); delete charts[key]; } }
+function axisBase(P) {
+  return { grid: { color: P.grid, lineWidth: 1, drawTicks: false }, border: { color: P.axis }, ticks: { color: P.muted, padding: 6, font: { size: 11 } } };
+}
+const tooltipBase = P => ({ backgroundColor: P.surface, titleColor: P.ink, bodyColor: P.ink2, borderColor: P.axis, borderWidth: 1, padding: 10, displayColors: false });
+
+function periodKey(r) {
+  if (gran === 'month') return r.day.slice(0, 7);
+  const x = new Date(r.d.getFullYear(), r.d.getMonth(), r.d.getDate());
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));   // Monday
+  return ymd(x);
+}
+function periodLabel(k) {
+  return gran === 'month'
+    ? new Date(k + '-01T00:00:00').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+    : 'Wk of ' + new Date(k + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+function renderTrend() {
+  const P = palette(), m = groupMap(VIEW, periodKey), keys = [...m.keys()].sort();
+  const pts = keys.map(k => { const s = stats(m.get(k)); return { label: periodLabel(k), n: s.n, nps: Math.round(s.nps), p: s.p, pa: s.pa, d: s.d }; });
+  setTable('trend', ['Period', 'Responses', 'Promoters', 'Passives', 'Detractors', 'NPS'], pts.map(p => [p.label, p.n, p.p, p.pa, p.d, fmtNps(p.nps)]), [1, 2, 3, 4, 5]);
+  if (!pts.length) { killChart('trend'); killChart('resp'); return; }
+  const vals = pts.map(p => p.nps);
+  const lo = Math.max(-100, Math.min(0, Math.floor(Math.min(...vals) / 10) * 10 - 10));
+  const hi = Math.min(100, Math.max(0, Math.ceil(Math.max(...vals) / 10) * 10 + 10));
+  const labels = pts.map(p => p.label);
+  mkChart('trend', 'cTrend', {
+    type: 'line',
+    data: { labels, datasets: [{
+      data: vals, borderColor: P.blue, borderWidth: 2, tension: 0, pointRadius: 5, pointHoverRadius: 7, pointBorderWidth: 2,
+      pointBackgroundColor: pts.map(p => p.n < MIN_POINT_N ? P.surface : P.blue),
+      pointBorderColor: pts.map(p => p.n < MIN_POINT_N ? P.blue : P.surface)
+    }] },
+    options: {
+      maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false }, tooltip: { ...tooltipBase(P), callbacks: {
+        label: c => { const p = pts[c.dataIndex]; return ['NPS ' + fmtNps(p.nps), p.n + ' responses', p.p + ' promoters · ' + p.pa + ' passives · ' + p.d + ' detractors']; } } } },
+      scales: {
+        x: { ...axisBase(P), grid: { display: false } },
+        y: { ...axisBase(P), min: lo, max: hi, grid: { color: c => c.tick && c.tick.value === 0 ? P.axis : P.grid, lineWidth: 1, drawTicks: false },
+             title: { display: true, text: 'NPS', color: P.muted } }
+      }
+    }
+  });
+  mkChart('resp', 'cResp', {
+    type: 'bar',
+    data: { labels, datasets: [{ data: pts.map(p => p.n), backgroundColor: P.neutral, borderRadius: 4, borderSkipped: 'bottom', barPercentage: .6, categoryPercentage: .9 }] },
+    options: {
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { ...tooltipBase(P), callbacks: { title: i => i[0].label, label: c => c.parsed.y + ' responses' } } },
+      scales: { x: { ...axisBase(P), grid: { display: false }, ticks: { display: false } }, y: { ...axisBase(P), beginAtZero: true, ticks: { ...axisBase(P).ticks, precision: 0, maxTicksLimit: 3 } } }
+    }
+  });
+}
+
+function renderDist() {
+  const P = palette(), counts = Array(11).fill(0); VIEW.forEach(r => counts[r.score]++);
+  const total = VIEW.length, cls = i => i >= 9 ? 'Promoter' : i >= 7 ? 'Passive' : 'Detractor';
+  setTable('dist', ['Score', 'Responses', 'Share', 'Class'], counts.map((c, i) => [i, c, pct(c, total), cls(i)]), [0, 1, 2]);
+  if (!total) { killChart('dist'); return; }
+  mkChart('dist', 'cDist', {
+    type: 'bar',
+    data: { labels: counts.map((_, i) => String(i)), datasets: [{
+      data: counts, borderRadius: 4, borderSkipped: 'bottom', barPercentage: .7, categoryPercentage: .9,
+      backgroundColor: counts.map((_, i) => i >= 9 ? P.blue : i >= 7 ? P.neutral : P.red) }] },
+    options: {
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { ...tooltipBase(P), callbacks: {
+        title: i => 'Score ' + i[0].label + ' (' + cls(+i[0].label) + ')', label: c => c.parsed.y + ' responses · ' + pct(c.parsed.y, total) } } },
+      scales: { x: { ...axisBase(P), grid: { display: false }, title: { display: true, text: 'Score given', color: P.muted } },
+                y: { ...axisBase(P), beginAtZero: true, ticks: { ...axisBase(P).ticks, precision: 0 } } }
+    }
+  });
+}
+
+/* ---------- table twins for the canvas charts ---------- */
+function setTable(key, head, rows, numCols) { TABLES[key] = { head, rows, numCols: numCols || [] }; paintTable(key); }
+function paintTable(key) {
+  const on = !!tableOn[key], t = TABLES[key];
+  $(key + '-chart').hidden = on; $(key + '-table').hidden = !on;
+  const btn = document.querySelector('[data-table="' + key + '"]'); if (btn) btn.textContent = on ? 'Chart view' : 'Table view';
+  if (!on || !t) return;
+  const thead = h('thead', null, h('tr', null, t.head.map((x, i) => h('th', { class: t.numCols.includes(i) ? 'num' : '' }, x))));
+  const tbody = h('tbody', null, t.rows.map(r => h('tr', null, r.map((c, i) => h('td', { class: t.numCols.includes(i) ? 'num' : '' }, String(c))))));
+  $(key + '-table').replaceChildren(h('table', null, thead, tbody));
+}
+
+/* ---------- diverging bar lists (NPS by group) ---------- */
+function renderGroup(boxId, key, limit) {
+  const m = groupMap(VIEW, r => r[key] || 'Unknown');
+  let arr = [...m.entries()].map(([name, rows]) => { const s = stats(rows); return { name, n: s.n, nps: s.nps }; });
+  arr.sort((a, b) => b.n - a.n || b.nps - a.nps);
+  const extra = arr.length - limit; arr = arr.slice(0, limit);
+  const box = $(boxId); box.replaceChildren();
+  if (!arr.length) { box.append(h('p', { class: 'empty' }, 'No responses match these filters')); return; }
+  arr.forEach(g => {
+    const w = Math.abs(g.nps) / 2;
+    const fill = h('i', { class: 'fill ' + (g.nps >= 0 ? 'pos' : 'neg') + (g.n < MIN_N ? ' low' : ''),
+      style: g.nps >= 0 ? 'left:50%;width:' + w + '%' : 'left:' + (50 - w) + '%;width:' + w + '%' });
+    box.append(h('div', { class: 'grow', title: g.name + ': NPS ' + fmtNps(g.nps) + ' from ' + g.n + ' responses' },
+      h('div', { class: 'gname' }, h('span', { class: 'gn' }, g.name), h('small', null, 'n=' + g.n)),
+      h('div', { class: 'gbar' }, h('span', { class: 'zero' }), fill),
+      h('div', { class: 'gval' }, fmtNps(g.nps))));
+  });
+  if (extra > 0) box.append(h('p', { class: 'note' }, '+' + extra + ' more not shown'));
+}
+
+/* ---------- keyword themes ---------- */
+const LIKE_THEMES = [
+  ['Fuel efficiency / mileage', /fuel|fule|petrol|mileage|millage|efic|effic|econom|oil|kmpl/i],
+  ['Design, looks & colour', /design|desig|desing|look|appear|style|stylish|beautiful|attractive|colou?r|smart look/i],
+  ['Comfort, space & ride', /comfort|comfy|seat|space|cabin|caby|ride|riding|balance|blance|smooth|easy|handle|control|weight/i],
+  ['Technology & features', /\befi\b|injector|technolog|digital|\bled\b|usb|bluetooth|feature|meter|cluster|\bsbs\b|alloy|allow ?wheel|modern|display|charg/i],
+  ['Performance & pickup', /performance|perfomance|pick ?up|power|speed|running|engine|good run/i],
+  ['Price & value', /price|cost|value|reasonable|competitive|affordable|cheap|budget/i],
+  ['Brand, service & parts', /brand|service|sevice|spare|parts?|dealer|warranty|market|maintenance|reputation/i],
+  ['Brakes & safety', /brake|disk|disc|safety|safe|side ?stand|combi/i]
+];
+const PAIN_THEMES = [
+  ['Fuel use / mileage', /fuel|fule|fueal|petrol|oil|mileage|millage|mila|kmpl|thel/i],
+  ['Parts & running cost', /parts?|price|cost|expens|wediyi|wadi/i],
+  ['Seat, shock & ride comfort', /seat|shock|comfort|suspension|ride|bumpy|rear|size/i],
+  ['Engine noise, heat & clutch', /noise|noice|sound|heat|rpm|clutch|gear|vibrat/i],
+  ['Lights, meter & electricals', /\bled\b|light|lamp|indicator|signal|meter|cluster|cable|gauge|battery|horn|switch/i],
+  ['Pickup & performance', /pick ?up|performance|power|speed|slow/i],
+  ['Brakes', /brake|brack|disk|disc|\bsbs\b/i],
+  ['Design, body & build quality', /design|look|body|strength|quality|leak|defect|mud|paint|finish|rust|attract/i]
+];
+function paintThemes(boxId, countId, texts, themes, tone) {
+  const total = texts.length, box = $(boxId); box.replaceChildren();
+  $(countId).textContent = total + ' with comments';
+  if (!total) { box.append(h('p', { class: 'empty' }, 'No comments in this selection')); return; }
+  const rows = themes.map(([label, re]) => ({ label, n: texts.filter(t => re.test(t)).length, tone })).filter(x => x.n).sort((a, b) => b.n - a.n);
+  const other = texts.filter(t => !themes.some(([, re]) => re.test(t))).length;
+  if (other) rows.push({ label: 'Other / unclassified', n: other, tone: 'gray' });
+  rows.forEach(r => box.append(h('div', { class: 'trow' },
+    h('span', null, r.label),
+    h('div', { class: 'tbar' }, h('i', { class: r.tone, style: 'width:' + Math.max(2, r.n / total * 100) + '%' })),
+    h('span', { class: 'tn' }, r.n + ' · ' + pct(r.n, total)))));
+}
+function renderThemes() {
+  paintThemes('themeLikes', 'likesN', VIEW.filter(r => r.cat !== 'D' && r.likes).map(r => r.likes), LIKE_THEMES, 'blue');
+  paintThemes('themePains', 'painsN', VIEW.map(r => [r.improve, r.whyNot].filter(Boolean).join(' / ')).filter(Boolean), PAIN_THEMES, 'red');
+}
+
+/* ---------- detractor feed + responses table ---------- */
+const scorePill = r => h('span', { class: 'pill' }, h('i', { class: 'dot ' + r.cat.toLowerCase() }), r.score + ' · ' + CAT_LABEL[r.cat]);
+function renderFeed() {
+  const det = VIEW.filter(r => r.cat === 'D').sort((a, b) => b.d - a.d), box = $('feed'); box.replaceChildren();
+  $('detN').textContent = det.length + ' detractor' + (det.length === 1 ? '' : 's') + (det.length > 30 ? ' (latest 30 shown)' : '');
+  if (!det.length) { box.append(h('p', { class: 'empty' }, 'No detractors in this selection')); return; }
+  det.slice(0, 30).forEach(r => box.append(h('div', { class: 'fcard' },
+    h('div', { class: 'fmeta' }, scorePill(r), ' ', [r.model, r.area, r.executive, fmtDate(r.d)].join(' · ')),
+    h('div', null, r.whyNot || r.improve || 'No comment recorded'))));
+}
+function commentCell(r) {
+  const td = h('td', { class: 'cm' });
+  if (r.likes) td.append(h('div', null, h('b', null, 'Likes: '), r.likes));
+  if (r.improve) td.append(h('div', null, h('b', null, 'Improve: '), r.improve));
+  if (r.whyNot) td.append(h('div', null, h('b', null, 'Would not recommend: '), r.whyNot));
+  return td;
+}
+function renderTable(reset) {
+  if (reset) shown = 50;
+  const q = $('fSearch').value.trim().toLowerCase();
+  const rows = VIEW.filter(r => !q || r._q.includes(q)).sort((a, b) => b.d - a.d);
+  $('tbody').replaceChildren(...rows.slice(0, shown).map(r => h('tr', null,
+    h('td', null, fmtDate(r.d)), h('td', null, r.executive), h('td', null, r.area), h('td', null, r.model),
+    h('td', null, scorePill(r)), commentCell(r))));
+  $('tblCount').textContent = Math.min(shown, rows.length) + ' of ' + rows.length;
+  $('btnMore').hidden = rows.length <= shown;
+}
+function renderNotes() {
+  const m = META || {};
+  $('dq').textContent = (m.used != null ? m.used + ' responses used out of ' + m.rowsInSheet + ' rows in the sheet. ' : '') +
+    (m.duplicatesRemoved ? m.duplicatesRemoved + ' repeat submissions (same VIN and odometer) were removed. ' : '') +
+    (m.invalidScore ? m.invalidScore + ' rows were skipped for a missing or invalid score. ' : '') +
+    (m.mismatches ? m.mismatches + ' rows have a "Will you recommend" answer that disagrees with the score (kept as scored). ' : '') +
+    'Customer names, phone numbers and VINs are never sent to this page. ' +
+    (m.generatedAt ? 'Data loaded ' + new Date(m.generatedAt).toLocaleString('en-GB') + '.' : '');
+}
+
+/* ---------- CSV (no personal data) ---------- */
+function exportCsv() {
+  const cols = [['Date', r => r.day], ['Executive', r => r.executive], ['Area', r => r.area], ['Brand', r => r.brand], ['Model', r => r.model],
+    ['Purchase', r => r.mode], ['Use', r => r.purpose], ['Score', r => r.score], ['Category', r => CAT_LABEL[r.cat]],
+    ['Why recommend', r => r.likes], ['Improvements', r => r.improve], ['Why not recommend', r => r.whyNot]];
+  const cell = v => { let s = String(v == null ? '' : v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; };
+  const lines = [cols.map(c => cell(c[0])).join(',')].concat(VIEW.slice().sort((a, b) => b.d - a.d).map(r => cols.map(c => cell(c[1](r))).join(',')));
+  const url = URL.createObjectURL(new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }));
+  const a = h('a', { href: url, download: 'product-nps-' + ymd(new Date()) + '.csv' }); document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* ---------- wiring ---------- */
+function wire() {
+  ['fFrom', 'fTo'].forEach(id => $(id).addEventListener('change', () => {
+    document.querySelectorAll('#presets button').forEach(b => b.setAttribute('aria-pressed', 'false')); readFilters(); render(); }));
+  ['fBrand', 'fModel', 'fArea', 'fExec', 'fMode'].forEach(id => $(id).addEventListener('change', () => { readFilters(); render(); }));
+  document.querySelectorAll('#presets button').forEach(b => b.addEventListener('click', () => { setPreset(+b.dataset.days); readFilters(); render(); }));
+  document.querySelectorAll('#gran button').forEach(b => b.addEventListener('click', () => {
+    gran = b.dataset.g; document.querySelectorAll('#gran button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); renderTrend(); }));
+  document.querySelectorAll('[data-table]').forEach(b => b.addEventListener('click', () => { const k = b.dataset.table; tableOn[k] = !tableOn[k]; paintTable(k); }));
+  $('btnReset').addEventListener('click', resetFilters);
+  $('fSearch').addEventListener('input', () => renderTable(true));
+  $('btnMore').addEventListener('click', () => { shown += 50; renderTable(false); });
+  $('btnCsv').addEventListener('click', exportCsv);
+  $('codeForm').addEventListener('submit', ev => { ev.preventDefault(); const c = $('code').value.trim(); if (c) load(c, false); });
+  $('btnRefresh').addEventListener('click', () => { const t = store.get(TOKEN_KEY); if (t) load(t, false); else showLogin('Please enter the access code again.'); });
+  $('btnSignOut').addEventListener('click', () => {
+    store.del(TOKEN_KEY); ALL = []; VIEW = []; $('code').value = '';
+    showLogin('Locked.');
+  });
+  if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (!$('app').hidden) { renderTrend(); renderDist(); } });
+}
+document.addEventListener('DOMContentLoaded', () => {
+  wire();
+  if (typeof Chart !== 'undefined') { Chart.defaults.font.family = getComputedStyle(document.body).fontFamily; }
+  const t = store.get(TOKEN_KEY);
+  if (t) load(t, true); else showLogin('');
+});
+</script>
+</body>
+</html>
