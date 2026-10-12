@@ -11,7 +11,7 @@
  * (no customer name, phone number or VIN is ever sent). The sheet itself stays private.
  */
 
-const SHEET_RESPONSES = 'Form responses 1';
+const SHEET_RESPONSES = 'Product NPS Survey';
 const MAX_FAILS_PER_10_MIN = 30;
 
 // 0-based column positions in "Form responses 1" (A = 0).
