@@ -11,7 +11,7 @@
  * (no customer name, phone number or VIN is ever sent). The sheet itself stays private.
  */
 
-const SHEET_RESPONSES = 'Product NPS Survey';
+const SHEET_RESPONSES = 'Form responses 1';   // the TAB name at the bottom of the sheet (not the file name)
 const MAX_FAILS_PER_10_MIN = 30;
 
 // 0-based column positions in "Form responses 1" (A = 0).
@@ -117,7 +117,9 @@ function safeEqual_(a, b) {
 /* ---------- reading and cleaning ---------- */
 
 function readValues_() {
-  const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_RESPONSES);
+  const ss = SpreadsheetApp.getActive();
+  // If the tab was renamed, fall back to the first tab (the form's response tab is normally first).
+  const sh = ss.getSheetByName(SHEET_RESPONSES) || ss.getSheets()[0];
   const last = sh.getLastRow();
   if (last < 2) return [];
   return sh.getRange(2, 1, last - 1, NUM_COLS).getValues();
