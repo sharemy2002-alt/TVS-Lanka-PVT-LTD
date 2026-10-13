@@ -159,6 +159,12 @@ details.dq summary { cursor: pointer; }
       </div>
       <label class="field">From <input type="date" id="fFrom"></label>
       <label class="field">To <input type="date" id="fTo"></label>
+      <label class="field">Dates are by
+        <select id="fBasis" aria-label="Which date the From and To filter uses">
+          <option value="sub">Submitted date</option>
+          <option value="visit">Visit date (typed in form)</option>
+        </select>
+      </label>
       <label class="field">Brand <select id="fBrand"></select></label>
       <label class="field">Model <select id="fModel"></select></label>
       <label class="field">Area <select id="fArea"></select></label>
@@ -258,7 +264,7 @@ details.dq summary { cursor: pointer; }
       </div>
       <div class="tblbox" style="max-height:520px">
         <table>
-          <thead><tr><th>Date</th><th>Executive</th><th>Area</th><th>Model</th><th>Score</th><th>Comments</th></tr></thead>
+          <thead><tr><th>Submitted</th><th>Visit date</th><th>Executive</th><th>Area</th><th>Model</th><th>Score</th><th>Comments</th></tr></thead>
           <tbody id="tbody"></tbody>
         </table>
       </div>
@@ -299,13 +305,16 @@ const palette = () => ({ blue: css('--blue'), red: css('--red'), neutral: css('-
   axis: css('--axis'), ink: css('--ink'), ink2: css('--ink2'), muted: css('--muted'), surface: css('--surface') });
 
 const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const fmtDay = k => k ? fmtDate(new Date(k + 'T00:00:00')) : '—';
 const fmtDate = d => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 const pct = (n, t) => t ? Math.round(n / t * 100) + '%' : '—';
 const fmtNps = v => v == null || isNaN(v) ? '—' : (Math.round(v) > 0 ? '+' : '') + Math.round(v);
+// The day a response belongs to for filtering/trends: submitted day, or the visit date typed in the form.
+const dayOf = r => (F.basis === 'visit' && r.vday) ? r.vday : r.day;
 const CAT_LABEL = { P: 'Promoter', N: 'Passive', D: 'Detractor' };
 
 let ALL = [], VIEW = [], META = {}, gran = 'week', shown = 50;
-const F = { from: '', to: '', brand: '', model: '', area: '', exec: '', mode: '' };
+const F = { from: '', to: '', basis: 'sub', brand: '', model: '', area: '', exec: '', mode: '' };
 const charts = {}, TABLES = {}, tableOn = {};
 
 /* ---------- stats ---------- */
@@ -349,7 +358,8 @@ async function load(code, quiet) {
   } finally { app.classList.remove('loading'); }
 }
 function prep(r) {
-  r.d = new Date(r.ts); r.day = ymd(r.d);
+  r.d = new Date(r.ts);                 // r.ts is wall-clock text from the sheet, read as-is (no time-zone shift)
+  r.day = String(r.ts).slice(0, 10);
   r._q = [r.executive, r.area, r.model, r.brand, r.mode, r.purpose, r.likes, r.improve, r.whyNot].join(' ').toLowerCase();
   return r;
 }
@@ -369,7 +379,7 @@ function buildFilters() {
   fillSelect('fMode', uniq('mode'), 'All');
 }
 function readFilters() {
-  F.from = $('fFrom').value; F.to = $('fTo').value; F.brand = $('fBrand').value; F.model = $('fModel').value;
+  F.from = $('fFrom').value; F.to = $('fTo').value; F.basis = $('fBasis').value; F.brand = $('fBrand').value; F.model = $('fModel').value;
   F.area = $('fArea').value; F.exec = $('fExec').value; F.mode = $('fMode').value;
 }
 function setPreset(days) {
@@ -378,14 +388,14 @@ function setPreset(days) {
   else { const s = new Date(); s.setDate(s.getDate() - (days - 1)); $('fFrom').value = ymd(s); $('fTo').value = ''; }
 }
 function resetFilters() {
-  ['fBrand', 'fModel', 'fArea', 'fExec', 'fMode'].forEach(id => $(id).value = '');
+  ['fBrand', 'fModel', 'fArea', 'fExec', 'fMode'].forEach(id => $(id).value = ''); $('fBasis').value = 'sub';
   setPreset(0); $('fSearch').value = ''; readFilters(); render();
 }
 
 /* ---------- render all ---------- */
 function render() {
   VIEW = ALL.filter(r =>
-    (!F.from || r.day >= F.from) && (!F.to || r.day <= F.to) && (!F.brand || r.brand === F.brand) &&
+    (!F.from || dayOf(r) >= F.from) && (!F.to || dayOf(r) <= F.to) && (!F.brand || r.brand === F.brand) &&
     (!F.model || r.model === F.model) && (!F.area || r.area === F.area) && (!F.exec || r.executive === F.exec) &&
     (!F.mode || r.mode === F.mode));
   renderKpis(); renderTrend(); renderDist();
@@ -406,8 +416,9 @@ function renderKpis() {
   $('kP').textContent = 'Promoters 9–10 · ' + s.p + ' (' + pct(s.p, n) + ')';
   const bars = $('split').children;
   [s.d, s.pa, s.p].forEach((v, i) => { bars[i].style.flex = n ? v + ' 1 0' : '0 1 0'; bars[i].style.display = v ? '' : 'none'; });
-  if (n) { const ds = VIEW.map(r => r.d).sort((a, b) => a - b); $('kRange').textContent = fmtDate(ds[0]) + ' – ' + fmtDate(ds[ds.length - 1]); }
-  else $('kRange').textContent = 'No responses match these filters';
+  const tail = ' · ' + n + ' of ' + ALL.length + ' in the sheet';
+  if (n) { const ds = VIEW.map(r => dayOf(r)).sort(); $('kRange').textContent = fmtDay(ds[0]) + ' – ' + fmtDay(ds[ds.length - 1]) + tail; }
+  else $('kRange').textContent = 'No responses match these filters (0 of ' + ALL.length + ')';
 }
 
 /* ---------- charts (Chart.js) ---------- */
@@ -423,8 +434,9 @@ function axisBase(P) {
 const tooltipBase = P => ({ backgroundColor: P.surface, titleColor: P.ink, bodyColor: P.ink2, borderColor: P.axis, borderWidth: 1, padding: 10, displayColors: false });
 
 function periodKey(r) {
-  if (gran === 'month') return r.day.slice(0, 7);
-  const x = new Date(r.d.getFullYear(), r.d.getMonth(), r.d.getDate());
+  const k = dayOf(r);
+  if (gran === 'month') return k.slice(0, 7);
+  const x = new Date(k + 'T00:00:00');
   x.setDate(x.getDate() - ((x.getDay() + 6) % 7));   // Monday
   return ymd(x);
 }
@@ -584,7 +596,7 @@ function renderTable(reset) {
   const q = $('fSearch').value.trim().toLowerCase();
   const rows = VIEW.filter(r => !q || r._q.includes(q)).sort((a, b) => b.d - a.d);
   $('tbody').replaceChildren(...rows.slice(0, shown).map(r => h('tr', null,
-    h('td', null, fmtDate(r.d)), h('td', null, r.executive), h('td', null, r.area), h('td', null, r.model),
+    h('td', null, fmtDate(r.d)), h('td', null, r.vday ? fmtDay(r.vday) : '—'), h('td', null, r.executive), h('td', null, r.area), h('td', null, r.model),
     h('td', null, scorePill(r)), commentCell(r))));
   $('tblCount').textContent = Math.min(shown, rows.length) + ' of ' + rows.length;
   $('btnMore').hidden = rows.length <= shown;
@@ -601,7 +613,7 @@ function renderNotes() {
 
 /* ---------- CSV (no personal data) ---------- */
 function exportCsv() {
-  const cols = [['Date', r => r.day], ['Executive', r => r.executive], ['Area', r => r.area], ['Brand', r => r.brand], ['Model', r => r.model],
+  const cols = [['Submitted date', r => r.day], ['Visit date', r => r.vday || ''], ['Executive', r => r.executive], ['Area', r => r.area], ['Brand', r => r.brand], ['Model', r => r.model],
     ['Purchase', r => r.mode], ['Use', r => r.purpose], ['Score', r => r.score], ['Category', r => CAT_LABEL[r.cat]],
     ['Why recommend', r => r.likes], ['Improvements', r => r.improve], ['Why not recommend', r => r.whyNot]];
   const cell = v => { let s = String(v == null ? '' : v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; };
@@ -615,7 +627,7 @@ function exportCsv() {
 function wire() {
   ['fFrom', 'fTo'].forEach(id => $(id).addEventListener('change', () => {
     document.querySelectorAll('#presets button').forEach(b => b.setAttribute('aria-pressed', 'false')); readFilters(); render(); }));
-  ['fBrand', 'fModel', 'fArea', 'fExec', 'fMode'].forEach(id => $(id).addEventListener('change', () => { readFilters(); render(); }));
+  ['fBasis', 'fBrand', 'fModel', 'fArea', 'fExec', 'fMode'].forEach(id => $(id).addEventListener('change', () => { readFilters(); render(); }));
   document.querySelectorAll('#presets button').forEach(b => b.addEventListener('click', () => { setPreset(+b.dataset.days); readFilters(); render(); }));
   document.querySelectorAll('#gran button').forEach(b => b.addEventListener('click', () => {
     gran = b.dataset.g; document.querySelectorAll('#gran button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); renderTrend(); }));

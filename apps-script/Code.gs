@@ -19,6 +19,7 @@ const MAX_FAILS_PER_10_MIN = 30;
 const C = {
   ts: 0,          // A  Timestamp
   exec: 1,        // B  Executive
+  visit: 2,       // C  Date (the visit date typed in the form)
   area1: 3,       // D  District (older rows)
   brand: 4,       // E  Brand
   vin: 5,         // F  VIN (used only to remove duplicates, never sent)
@@ -146,6 +147,7 @@ function parseResponses_(values) {
 
     const row = {
       ts: ts,
+      vday: visitDay_(r[C.visit], ts),
       executive: clean_(r[C.exec]) || 'Unknown',
       area: areaOf_(r),
       brand: product.brand,
@@ -189,13 +191,50 @@ function parseScore_(v) {
   return n >= 0 && n <= 10 ? n : null;
 }
 
-/** Form timestamps arrive as Date objects, or as "dd/mm/yyyy hh:mm:ss" text. Returns ISO text. */
+/** The sheet's time zone (so dates match what you see in the sheet and the Form). */
+function tz_() {
+  try { return SpreadsheetApp.getActive().getSpreadsheetTimeZone() || 'Asia/Colombo'; } catch (e) { return 'Asia/Colombo'; }
+}
+function p2_(n) { return ('0' + n).slice(-2); }
+
+/**
+ * Timestamp as plain wall-clock text "yyyy-MM-ddTHH:mm:ss" - the same date and time shown in the sheet,
+ * with no time-zone conversion, so a response never slips to the next/previous day.
+ */
 function toIso_(v) {
-  if (v instanceof Date) return isNaN(v) ? null : v.toISOString();
+  if (v instanceof Date) {
+    return isNaN(v) ? null : Utilities.formatDate(v, tz_(), "yyyy-MM-dd'T'HH:mm:ss");
+  }
   const m = String(v || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
   if (!m) return null;
-  const p = function (n) { return ('0' + n).slice(-2); };
-  return m[3] + '-' + p(m[2]) + '-' + p(m[1]) + 'T' + p(m[4] || 0) + ':' + p(m[5] || 0) + ':' + p(m[6] || 0) + '+05:30';
+  return m[3] + '-' + p2_(m[2]) + '-' + p2_(m[1]) + 'T' + p2_(m[4] || 0) + ':' + p2_(m[5] || 0) + ':' + p2_(m[6] || 0);
+}
+
+/**
+ * The "Date" typed in the form (visit date) as yyyy-MM-dd, or '' when it cannot be trusted.
+ * People type 08/08/0026, or day and month swapped (09/10 instead of 10/09). A date after the
+ * submission day is retried with day/month swapped; if that fails too it is ignored.
+ */
+function visitDay_(v, tsIso) {
+  const sub = String(tsIso).slice(0, 10);
+  const lim = new Date(sub + 'T00:00:00Z'); lim.setUTCDate(lim.getUTCDate() + 1);
+  const limit = lim.toISOString().slice(0, 10);
+  let a, b, y;                                        // a = first number, b = second number
+  if (v instanceof Date) {
+    if (isNaN(v)) return '';
+    const t = Utilities.formatDate(v, tz_(), 'yyyy-MM-dd').split('-');
+    y = +t[0]; b = +t[1]; a = +t[2];                  // real date: a = day, b = month
+  } else {
+    const t = String(v || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (!t) return '';
+    a = +t[1]; b = +t[2]; y = +t[3];                  // text dd/mm/yyyy
+  }
+  function mk(day, mon) {
+    if (y < 2020 || y > 2100 || mon < 1 || mon > 12 || day < 1 || day > 31) return '';
+    const s = y + '-' + p2_(mon) + '-' + p2_(day);
+    return s <= limit ? s : '';
+  }
+  return mk(a, b) || mk(b, a);
 }
 
 /** Brand + model, from whichever columns this row used. */
